@@ -1,4 +1,29 @@
+# Terraform – directorios de trabajo locales
 .terraform/
+
+# Estado de Terraform (se guarda en S3, nunca en el repo)
 *.tfstate
 *.tfstate.backup
-.terraform.lock.hcl
+
+# Lock file de providers (opcional commitear, se recomienda incluirlo)
+# .terraform.lock.hcl
+
+# Variables con secretos (contraseñas, keys)
+*.tfvars
+*.tfvars.json
+
+# Archivos de override locales
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Plan serializado (puede contener secretos en texto plano)
+*.tfplan
+
+# Credenciales y entornos locales
+.env
+.env.*
+
+# Datos persistentes de Docker (volúmenes locales)
+data/

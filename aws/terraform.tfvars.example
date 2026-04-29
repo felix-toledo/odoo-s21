@@ -1,0 +1,31 @@
+# =============================================================================
+# EJEMPLO de terraform.tfvars
+# Copiá este archivo como "terraform.tfvars" y completá los valores reales.
+# El archivo terraform.tfvars está en .gitignore — NUNCA lo commitees.
+# =============================================================================
+
+# Región de AWS
+aws_region = "us-east-1"
+
+# Entorno: dev | staging | prod
+environment = "dev"
+
+# Tipo de instancia EC2 (t3.micro está en Free Tier)
+instance_type = "t3.micro"
+
+# Tipo de instancia RDS (db.t3.micro está en Free Tier)
+db_instance_class = "db.t3.micro"
+
+# Nombre de la base de datos
+db_name = "odoo"
+
+# Usuario de la base de datos
+db_username = "odoo"
+
+# Contraseña de la base de datos — mínimo 12 caracteres, CAMBIAR ESTO
+db_password = "CambiarEsto2024!"
+
+# CIDR con acceso al puerto 8069.
+# Para mayor seguridad, reemplazá 0.0.0.0/0 por tu IP pública: "x.x.x.x/32"
+# Podés consultarla en: https://checkip.amazonaws.com
+allowed_cidr = "0.0.0.0/0"

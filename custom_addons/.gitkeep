@@ -1,0 +1,2 @@
+# Carpeta para módulos custom de Odoo
+# Colocá acá tus addons propios y estarán disponibles en /mnt/extra-addons dentro del contenedor
