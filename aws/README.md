@@ -48,6 +48,27 @@ Verifica que funciona:
 aws sts get-caller-identity
 ```
 
+Si ya tenés otra cuenta configurada en AWS CLI, no hace falta tocarla. Tenés dos opciones seguras:
+
+```powershell
+# Ver perfiles disponibles
+aws configure list-profiles
+
+# Probar un perfil especifico
+aws sts get-caller-identity --profile universidad
+```
+
+- Opción 1: exportar el perfil solo para esta terminal:
+
+```powershell
+$env:AWS_PROFILE = "universidad"
+aws sts get-caller-identity
+```
+
+- Opción 2: definir `aws_profile` dentro de `terraform.tfvars`.
+
+Recomendación: usar `AWS_PROFILE` al bootstrap del backend y dejar `aws_profile` también en `terraform.tfvars` para que el provider de Terraform apunte siempre a la cuenta correcta.
+
 ### 2. Terraform >= 1.5.0
 
 ```powershell
@@ -63,6 +84,13 @@ Si no está instalado: https://developer.hashicorp.com/terraform/install
 El estado de Terraform se guarda en S3 con bloqueo en DynamoDB para evitar que varios desarrolladores modifiquen la infraestructura al mismo tiempo.
 
 **Ejecuta estos comandos una sola vez** (el responsable DevOps del equipo):
+
+Primero activá el perfil correcto si no querés usar la cuenta por default:
+
+```powershell
+$env:AWS_PROFILE = "universidad"
+aws sts get-caller-identity
+```
 
 ```powershell
 # 1. Obtener tu Account ID
@@ -96,6 +124,8 @@ aws dynamodb create-table `
 
 Luego edita `providers.tf` y reemplaza `<ACCOUNT_ID>` con el valor real.
 
+Si preferís no exportar `AWS_PROFILE`, podés agregar `--profile universidad` a cada comando `aws` del bootstrap.
+
 ---
 
 ## Variables de entorno obligatorias
@@ -112,6 +142,7 @@ $env:TF_VAR_db_password = "MiPasswordSegura2024!"
 
 ```hcl
 # aws/terraform.tfvars  ← NO commitear
+aws_profile  = "universidad"
 db_password  = "MiPasswordSegura2024!"
 allowed_cidr = "203.0.113.10/32"   # tu IP pública
 environment  = "dev"
@@ -125,6 +156,7 @@ environment  = "dev"
 
 ```powershell
 # Desde la raíz del repositorio
+$env:AWS_PROFILE = "universidad"   # opcional si ya definiste aws_profile en terraform.tfvars
 terraform -chdir=aws init
 ```
 
@@ -132,6 +164,7 @@ terraform -chdir=aws init
 
 ```powershell
 # Ver qué va a cambiar sin tocar nada
+$env:AWS_PROFILE = "universidad"
 terraform -chdir=aws plan
 ```
 
@@ -141,6 +174,7 @@ terraform -chdir=aws plan
 ### Aplicar cambios
 
 ```powershell
+$env:AWS_PROFILE = "universidad"
 terraform -chdir=aws apply
 ```
 
@@ -157,18 +191,21 @@ db_endpoint           = "odoo-s21-dev-db.xxxx.us-east-1.rds.amazonaws.com"
 ### Acceso seguro a la EC2 (sin clave SSH)
 
 ```powershell
+$env:AWS_PROFILE = "universidad"
 aws ssm start-session --target <instance_id> --region us-east-1
 ```
 
 ### Ver logs de Odoo en tiempo real
 
 ```powershell
+$env:AWS_PROFILE = "universidad"
 aws logs tail /ec2/odoo-s21/dev --follow --region us-east-1
 ```
 
 ### Destruir la infraestructura (apagar la demo)
 
 ```powershell
+$env:AWS_PROFILE = "universidad"
 terraform -chdir=aws destroy
 ```
 
@@ -179,10 +216,13 @@ terraform -chdir=aws destroy
 | Variable           | Default        | Descripción                                        |
 |--------------------|----------------|----------------------------------------------------|
 | `aws_region`       | `us-east-1`    | Región AWS                                         |
+| `aws_profile`      | `""`          | Perfil AWS CLI opcional para este proyecto         |
 | `environment`      | `dev`          | Entorno: dev / staging / prod                      |
 | `instance_type`    | `t3.micro`     | Tipo de instancia EC2                              |
+| `ec2_root_volume_size` | `30`       | Tamaño del disco raíz EC2 en GB                    |
 | `allowed_cidr`     | `0.0.0.0/0`    | CIDR con acceso al puerto 8069 (restringir en prod)|
 | `db_instance_class`| `db.t3.micro`  | Clase de instancia RDS                             |
+| `db_backup_retention_period` | `1`      | Días de backups automáticos RDS                   |
 | `db_name`          | `odoo`         | Nombre de la base de datos                         |
 | `db_username`      | `odoo`         | Usuario maestro RDS                                |
 | `db_password`      | **requerida**  | Contraseña RDS — nunca en el repo                  |
@@ -193,6 +233,7 @@ terraform -chdir=aws destroy
 
 - Cambiar `deletion_protection = true` y `skip_final_snapshot = false` en RDS
 - Cambiar `multi_az = true` en RDS para alta disponibilidad real
+- Si tu cuenta AWS tiene restricciones de plan/free tier en RDS, dejar `db_backup_retention_period = 1` o bajar a `0`
 - Restringir `allowed_cidr` a las IPs del equipo o usar un ALB
 - Considerar AWS Secrets Manager para rotar la contraseña de BD automáticamente
 

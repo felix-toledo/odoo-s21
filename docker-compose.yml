@@ -19,6 +19,9 @@ services:
     image: odoo:16.0
     container_name: odoo-web
     restart: unless-stopped
+    build: 
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       db:
         condition: service_healthy

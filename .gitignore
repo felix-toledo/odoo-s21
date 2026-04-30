@@ -21,6 +21,9 @@ override.tf.json
 # Plan serializado (puede contener secretos en texto plano)
 *.tfplan
 
+# Archivos de diagnóstico SSM (contienen IDs de infraestructura)
+ssm-*.json
+
 # Credenciales y entornos locales
 .env
 .env.*

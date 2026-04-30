@@ -12,6 +12,12 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "aws_profile" {
+  description = "Perfil opcional de AWS CLI a usar para esta infraestructura. Si queda vacio, usa las credenciales activas del entorno"
+  type        = string
+  default     = ""
+}
+
 variable "environment" {
   description = "Nombre del entorno: dev | staging | prod"
   type        = string
@@ -31,6 +37,17 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
+variable "ec2_root_volume_size" {
+  description = "Tamaño en GB del disco raíz de la EC2. Amazon Linux 2023 actualmente requiere al menos 30 GB con esta AMI"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.ec2_root_volume_size >= 30
+    error_message = "ec2_root_volume_size debe ser al menos 30 GB para esta AMI."
+  }
+}
+
 variable "allowed_cidr" {
   description = "CIDR con acceso al puerto 8069. Restringir a la IP del equipo en produccion"
   type        = string
@@ -43,6 +60,17 @@ variable "db_instance_class" {
   description = "Clase de instancia RDS para PostgreSQL"
   type        = string
   default     = "db.t3.micro"
+}
+
+variable "db_backup_retention_period" {
+  description = "Dias de retencion de backups automáticos en RDS. Algunas cuentas free tier solo permiten 1 o menos"
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.db_backup_retention_period >= 0 && var.db_backup_retention_period <= 35
+    error_message = "db_backup_retention_period debe estar entre 0 y 35."
+  }
 }
 
 variable "db_name" {

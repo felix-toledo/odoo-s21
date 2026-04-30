@@ -15,15 +15,15 @@ terraform {
   # del equipo debe crear (una sola vez) los recursos de bootstrap con:
   #
   #   aws s3api create-bucket \
-  #     --bucket <ACCOUNT_ID>-s21-lubricentro-tfstate \
+  #     --bucket 070980587585-s21-lubricentro-tfstate \
   #     --region us-east-1
   #
   #   aws s3api put-bucket-versioning \
-  #     --bucket <ACCOUNT_ID>-s21-lubricentro-tfstate \
+  #     --bucket 070980587585-s21-lubricentro-tfstate \
   #     --versioning-configuration Status=Enabled
   #
   #   aws s3api put-bucket-encryption \
-  #     --bucket <ACCOUNT_ID>-s21-lubricentro-tfstate \
+  #     --bucket 070980587585-s21-lubricentro-tfstate \
   #     --server-side-encryption-configuration \
   #       '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
   #
@@ -37,7 +37,7 @@ terraform {
   # Reemplaza <ACCOUNT_ID> con tu AWS Account ID (aws sts get-caller-identity)
   # ─────────────────────────────────────────────────────────────────────────
   backend "s3" {
-    bucket         = "<ACCOUNT_ID>-s21-lubricentro-tfstate"
+    bucket         = "070980587585-s21-lubricentro-tfstate"
     key            = "odoo/prod/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
@@ -47,6 +47,7 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+  profile = var.aws_profile != "" ? var.aws_profile : null
 
   default_tags {
     tags = {

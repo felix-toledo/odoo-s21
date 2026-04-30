@@ -119,7 +119,7 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   publicly_accessible     = false  # DB privada, no expuesta a internet
-  backup_retention_period = 7
+  backup_retention_period = var.db_backup_retention_period
   deletion_protection     = false  # Cambiar a true en produccion real
   skip_final_snapshot     = true   # Cambiar a false en produccion real
   multi_az                = false  # Cambiar a true para HA real
@@ -196,7 +196,7 @@ resource "aws_instance" "odoo" {
   user_data_replace_on_change = true
 
   root_block_device {
-    volume_size = 20
+    volume_size = var.ec2_root_volume_size
     volume_type = "gp3"
     encrypted   = true
   }
@@ -208,40 +208,42 @@ resource "aws_instance" "odoo" {
 
   user_data = <<-EOF
     #!/bin/bash
-    set -euxo pipefail
+    # Loguear todo pero NO abortar ante errores individuales
+    exec > >(tee /var/log/odoo-bootstrap.log) 2>&1
+    set -uxo pipefail
 
+    echo "=== [1/4] Instalando Docker ==="
     dnf update -y
-    dnf install -y docker docker-compose-plugin
+    dnf install -y docker
     systemctl enable --now docker
+    echo "=== Docker listo ==="
 
+    echo "=== [2/4] Creando directorios ==="
     mkdir -p /opt/odoo/odoo /opt/odoo/custom_addons
+    # uid 101 = usuario "odoo" dentro del contenedor oficial odoo:16.0
+    chown -R 101:101 /opt/odoo/odoo /opt/odoo/custom_addons
 
-    cat >/opt/odoo/docker-compose.yml <<'YAML'
-    services:
-      web:
-        image: odoo:16.0
-        container_name: odoo-web
-        restart: unless-stopped
-        ports:
-          - "8069:8069"
-        environment:
-          HOST: ${aws_db_instance.postgres.address}
-          USER: ${var.db_username}
-          PASSWORD: ${var.db_password}
-          DBNAME: ${var.db_name}
-        volumes:
-          - /opt/odoo/odoo:/var/lib/odoo
-          - /opt/odoo/custom_addons:/mnt/extra-addons
-        logging:
-          driver: awslogs
-          options:
-            awslogs-group: ${aws_cloudwatch_log_group.app.name}
-            awslogs-region: ${var.aws_region}
-            awslogs-stream-prefix: odoo
-    YAML
+    echo "=== [3/4] Descargando imagen Odoo 16 ==="
+    docker pull odoo:16.0
+    echo "=== Imagen descargada ==="
 
-    cd /opt/odoo
-    docker compose up -d
+    echo "=== [4/4] Iniciando contenedor Odoo ==="
+    docker run -d \
+      --name odoo-web \
+      --restart unless-stopped \
+      -p 8069:8069 \
+      -e HOST=${aws_db_instance.postgres.address} \
+      -e USER=${var.db_username} \
+      -e "PASSWORD=${var.db_password}" \
+      -v /opt/odoo/odoo:/var/lib/odoo \
+      -v /opt/odoo/custom_addons:/mnt/extra-addons \
+      --log-driver=awslogs \
+      --log-opt awslogs-group=${aws_cloudwatch_log_group.app.name} \
+      --log-opt awslogs-region=${var.aws_region} \
+      --log-opt awslogs-stream=odoo-web \
+      odoo:16.0 odoo -i base -d odoo --without-demo=all && echo "=== Contenedor iniciado OK ===" || echo "=== ERROR: fallo docker run ==="
+
+    echo "=== Bootstrap finalizado ==="
   EOF
 
   depends_on = [

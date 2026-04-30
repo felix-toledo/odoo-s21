@@ -7,14 +7,26 @@
 # Región de AWS
 aws_region = "us-east-1"
 
+# Perfil de AWS CLI a usar para este proyecto.
+# Dejar vacío si vas a exportar AWS_PROFILE manualmente antes de ejecutar Terraform.
+aws_profile = "universidad"
+
 # Entorno: dev | staging | prod
 environment = "dev"
 
 # Tipo de instancia EC2 (t3.micro está en Free Tier)
 instance_type = "t3.micro"
 
+# Tamaño del disco raíz de EC2 en GB.
+# Esta AMI de Amazon Linux 2023 requiere al menos 30 GB.
+ec2_root_volume_size = 30
+
 # Tipo de instancia RDS (db.t3.micro está en Free Tier)
 db_instance_class = "db.t3.micro"
+
+# Retención de backups automáticos en RDS.
+# En cuentas con restricciones de free tier, usar 1. Si AWS vuelve a rechazarlo, bajar a 0.
+db_backup_retention_period = 1
 
 # Nombre de la base de datos
 db_name = "odoo"
