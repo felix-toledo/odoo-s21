@@ -79,6 +79,32 @@ variable "db_name" {
   default     = "odoo"
 }
 
+# ── CloudWatch ───────────────────────────────────────────────────────────────
+
+variable "cloudwatch_log_retention_in_days" {
+  description = "Dias de retencion para logs de Odoo en CloudWatch"
+  type        = number
+  default     = 7
+}
+
+variable "ec2_cpu_alarm_threshold" {
+  description = "Umbral de CPU (%) para alarma de EC2"
+  type        = number
+  default     = 80
+}
+
+variable "rds_cpu_alarm_threshold" {
+  description = "Umbral de CPU (%) para alarma de RDS"
+  type        = number
+  default     = 80
+}
+
+variable "rds_free_storage_alarm_threshold_bytes" {
+  description = "Umbral minimo de espacio libre en disco para RDS, en bytes"
+  type        = number
+  default     = 2147483648
+}
+
 variable "db_username" {
   description = "Usuario maestro de RDS PostgreSQL"
   type        = string

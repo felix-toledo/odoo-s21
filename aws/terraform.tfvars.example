@@ -41,3 +41,11 @@ db_password = "CambiarEsto2024!"
 # Para mayor seguridad, reemplazá 0.0.0.0/0 por tu IP pública: "x.x.x.x/32"
 # Podés consultarla en: https://checkip.amazonaws.com
 allowed_cidr = "0.0.0.0/0"
+
+# Retención de logs de Odoo en CloudWatch
+cloudwatch_log_retention_in_days = 7
+
+# Alarmas básicas de CloudWatch
+ec2_cpu_alarm_threshold                = 80
+rds_cpu_alarm_threshold                = 80
+rds_free_storage_alarm_threshold_bytes = 2147483648

@@ -1,6 +1,6 @@
 # Infraestructura AWS – Odoo 16 (Siglo XXI Lubricentro)
 
-Stack de Terraform para desplegar Odoo 16 en AWS con base de datos administrada RDS PostgreSQL, acceso seguro vía SSM y logs centralizados en CloudWatch.
+Stack de Terraform para desplegar Odoo 16 en AWS con base de datos administrada RDS PostgreSQL, acceso seguro vía SSM, logs centralizados en CloudWatch y alarmas básicas de monitoreo.
 
 ---
 
@@ -25,6 +25,8 @@ CloudWatch Logs  /ec2/odoo-s21/<env>
 | `aws_security_group` rds | Solo acepta conexiones desde el SG de la EC2      |
 | `aws_iam_role`     | Rol EC2 con SSM + permisos CloudWatch Logs               |
 | `aws_cloudwatch_log_group` | Retención 7 días                               |
+| `aws_cloudwatch_metric_alarm` | Alarmas de CPU/health para EC2 y RDS        |
+| `aws_cloudwatch_dashboard` | Dashboard operativo con métricas y logs        |
 
 ---
 
@@ -200,6 +202,21 @@ aws ssm start-session --target <instance_id> --region us-east-1
 ```powershell
 $env:AWS_PROFILE = "universidad"
 aws logs tail /ec2/odoo-s21/dev --follow --region us-east-1
+```
+
+### Monitoreo en CloudWatch
+
+Terraform ahora deja configurado:
+
+- alarmas por CPU alta en EC2 y RDS
+- alarma por `StatusCheckFailed` en la EC2
+- alarma por bajo espacio libre en RDS
+- dashboard con métricas de EC2, RDS y últimos logs de Odoo
+
+Después del `apply`, podés ver el nombre del dashboard con:
+
+```powershell
+terraform -chdir=aws output cloudwatch_dashboard_name
 ```
 
 ### Destruir la infraestructura (apagar la demo)

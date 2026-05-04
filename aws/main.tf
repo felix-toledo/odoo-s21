@@ -33,8 +33,10 @@ data "aws_ami" "amazon_linux_2023" {
 # =============================================================================
 
 locals {
-  app_name       = "odoo-s21-${var.environment}"
-  log_group_name = "/ec2/odoo-s21/${var.environment}"
+  app_name              = "odoo-s21-${var.environment}"
+  log_group_name        = "/ec2/odoo-s21/${var.environment}"
+  dashboard_name        = "${local.app_name}-overview"
+  ec2_status_alarm_name = "${local.app_name}-ec2-status-check"
 }
 
 # =============================================================================
@@ -43,7 +45,7 @@ locals {
 
 resource "aws_cloudwatch_log_group" "app" {
   name              = local.log_group_name
-  retention_in_days = 7
+  retention_in_days = var.cloudwatch_log_retention_in_days
 }
 
 # =============================================================================
@@ -118,11 +120,11 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  publicly_accessible     = false  # DB privada, no expuesta a internet
+  publicly_accessible     = false # DB privada, no expuesta a internet
   backup_retention_period = var.db_backup_retention_period
-  deletion_protection     = false  # Cambiar a true en produccion real
-  skip_final_snapshot     = true   # Cambiar a false en produccion real
-  multi_az                = false  # Cambiar a true para HA real
+  deletion_protection     = false # Cambiar a true en produccion real
+  skip_final_snapshot     = true  # Cambiar a false en produccion real
+  multi_az                = false # Cambiar a true para HA real
 }
 
 # =============================================================================
@@ -252,4 +254,139 @@ resource "aws_instance" "odoo" {
     aws_iam_role_policy.cloudwatch_logs,
     aws_cloudwatch_log_group.app
   ]
+
+  lifecycle {
+    # Evita reemplazar la instancia si AWS publica una AMI más nueva (most_recent drift)
+    # o si el user_data cambia en el código — la instancia ya está configurada y corriendo.
+    # Para forzar un reemplazo intencional, comentá estas líneas y hacé apply.
+    ignore_changes = [ami, user_data]
+  }
+}
+
+# =============================================================================
+# CLOUDWATCH MONITORING
+# =============================================================================
+
+resource "aws_cloudwatch_metric_alarm" "ec2_cpu_high" {
+  alarm_name          = "${local.app_name}-ec2-cpu-high"
+  alarm_description   = "CPU alta en la instancia EC2 que ejecuta Odoo"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = var.ec2_cpu_alarm_threshold
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    InstanceId = aws_instance.odoo.id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ec2_status_check_failed" {
+  alarm_name          = local.ec2_status_alarm_name
+  alarm_description   = "Fallo en status checks de la instancia EC2"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 1
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    InstanceId = aws_instance.odoo.id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
+  alarm_name          = "${local.app_name}-rds-cpu-high"
+  alarm_description   = "CPU alta en la instancia RDS de PostgreSQL"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = var.rds_cpu_alarm_threshold
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.postgres.id
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "rds_free_storage_low" {
+  alarm_name          = "${local.app_name}-rds-free-storage-low"
+  alarm_description   = "Espacio libre bajo en el almacenamiento de RDS"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  metric_name         = "FreeStorageSpace"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = var.rds_free_storage_alarm_threshold_bytes
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.postgres.id
+  }
+}
+
+resource "aws_cloudwatch_dashboard" "overview" {
+  dashboard_name = local.dashboard_name
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "EC2 Odoo"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = false
+          metrics = [
+            ["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.odoo.id],
+            ["AWS/EC2", "StatusCheckFailed", "InstanceId", aws_instance.odoo.id]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "RDS PostgreSQL"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = false
+          metrics = [
+            ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", aws_db_instance.postgres.id],
+            ["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", aws_db_instance.postgres.id]
+          ]
+        }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 6
+        width  = 24
+        height = 6
+        properties = {
+          region = var.aws_region
+          title  = "Logs Odoo"
+          query  = "SOURCE '${aws_cloudwatch_log_group.app.name}' | fields @timestamp, @message | sort @timestamp desc | limit 50"
+          view   = "table"
+        }
+      }
+    ]
+  })
 }

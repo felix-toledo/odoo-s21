@@ -36,3 +36,8 @@ output "cloudwatch_log_group" {
   description = "Nombre del log group en CloudWatch"
   value       = aws_cloudwatch_log_group.app.name
 }
+
+output "cloudwatch_dashboard_name" {
+  description = "Nombre del dashboard principal de CloudWatch"
+  value       = aws_cloudwatch_dashboard.overview.dashboard_name
+}
