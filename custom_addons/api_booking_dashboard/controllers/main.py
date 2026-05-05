@@ -1,14 +1,234 @@
 from odoo import http, fields
-from odoo.http import request
+from odoo.http import request, Response
 from datetime import datetime, timedelta
 import json
 
+
+def _json_response(data, status=200):
+    return Response(
+        json.dumps(data, default=str),
+        status=status,
+        mimetype='application/json'
+    )
+
+
 class ApiBookingDashboard(http.Controller):
-    
+
     # ==================== RESERVAS ====================
-    
-    @http.route('/api/booking/reserve', type='json', auth='user', methods=['POST'])
+
+    @http.route('/api/booking/reserve', type='json', auth='user', methods=['POST'], csrf=False)
     def reserve_booking(self):
+        """
+        Crear una reserva sin pasar por el portal de Odoo.
+        POST /api/booking/reserve
+        { "booking_type_id": 1, "resource_id": 2, "date_start": "2024-05-10T14:00:00", "name": "Mi reserva" }
+        """
+        try:
+            data = request.get_json_data()
+            booking_type_id = data.get('booking_type_id')
+            resource_id = data.get('resource_id')
+            date_start = data.get('date_start')
+            partner_id = data.get('partner_id')
+            name = data.get('name', 'Reserva')
+
+            if not all([booking_type_id, resource_id, date_start]):
+                return {'success': False, 'error': 'Faltan campos: booking_type_id, resource_id, date_start'}
+
+            booking_type = request.env['resource.booking.type'].browse(booking_type_id)
+            if not booking_type.exists():
+                return {'success': False, 'error': 'Tipo de reserva no encontrado'}
+
+            start = datetime.fromisoformat(date_start.replace('Z', ''))
+            end = start + timedelta(minutes=booking_type.duration or 30)
+
+            if not partner_id:
+                partner_id = request.env.user.partner_id.id
+
+            booking = request.env['resource.booking'].create({
+                'name': name,
+                'booking_type_id': booking_type_id,
+                'resource_id': resource_id,
+                'partner_id': partner_id,
+                'date_start': start,
+                'date_end': end,
+                'state': 'draft',
+            })
+
+            return {
+                'success': True,
+                'booking_id': booking.id,
+                'date_start': booking.date_start.isoformat(),
+                'date_end': booking.date_end.isoformat(),
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    @http.route('/api/booking/types', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_booking_types(self):
+        try:
+            types = request.env['resource.booking.type'].search([])
+            data = [{'id': t.id, 'name': t.name, 'duration': t.duration, 'description': t.description or ''} for t in types]
+            return _json_response({'success': True, 'data': data})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/booking/resources', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_resources(self):
+        try:
+            resources = request.env['resource.resource'].search([])
+            data = [{'id': r.id, 'name': r.name} for r in resources]
+            return _json_response({'success': True, 'data': data})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/booking/available-slots', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_available_slots(self):
+        """
+        POST /api/booking/available-slots
+        { "booking_type_id": 1, "date": "2024-05-10", "resource_id": 2 }
+        """
+        try:
+            data = request.get_json_data()
+            date_str = data.get('date')
+            slots = []
+            for hour in range(8, 18):
+                for minute in [0, 30]:
+                    slots.append({
+                        'time': f"{hour:02d}:{minute:02d}",
+                        'datetime': f"{date_str}T{hour:02d}:{minute:02d}:00",
+                        'available': True
+                    })
+            return {'success': True, 'slots': slots}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    @http.route('/api/booking/my-bookings', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_my_bookings(self):
+        try:
+            partner_id = request.env.user.partner_id.id
+            bookings = request.env['resource.booking'].search([('partner_id', '=', partner_id)], order='date_start desc')
+            data = [{
+                'id': b.id,
+                'name': b.name,
+                'booking_type': b.booking_type_id.name,
+                'resource': b.resource_id.name if b.resource_id else '',
+                'date_start': b.date_start.isoformat() if b.date_start else None,
+                'date_end': b.date_end.isoformat() if b.date_end else None,
+                'state': b.state,
+            } for b in bookings]
+            return _json_response({'success': True, 'data': data})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    # ==================== DASHBOARD ====================
+
+    @http.route('/api/dashboard/summary', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_dashboard_summary(self):
+        try:
+            today = fields.Date.today()
+            sales_today = request.env['sale.order'].search([
+                ('date_order', '>=', f"{today} 00:00:00"),
+                ('state', 'in', ['done', 'sale'])
+            ])
+            stock_quants = request.env['stock.quant'].search([])
+            pending_orders = request.env['sale.order'].search_count([('state', '=', 'draft')])
+            bookings_today = request.env['resource.booking'].search_count([
+                ('date_start', '>=', f"{today} 00:00:00"),
+                ('date_start', '<', f"{today} 23:59:59"),
+            ])
+            return _json_response({'success': True, 'data': {
+                'total_sales_today': sum(s.amount_total for s in sales_today),
+                'stock_value': sum(q.quantity * q.cost for q in stock_quants),
+                'pending_orders': pending_orders,
+                'bookings_today': bookings_today,
+            }})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/dashboard/stock', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_stock(self):
+        try:
+            products = request.env['product.product'].search_read(
+                [], fields=['id', 'name', 'qty_available', 'list_price', 'standard_price']
+            )
+            data = [{
+                'id': p['id'],
+                'name': p['name'],
+                'qty_available': p['qty_available'],
+                'list_price': p['list_price'],
+                'cost': p['standard_price'],
+                'margin': round(p['list_price'] - p['standard_price'], 2),
+            } for p in products]
+            return _json_response({'success': True, 'data': data})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/dashboard/sales', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_sales(self):
+        try:
+            sales = request.env['sale.order'].search_read(
+                [('state', 'in', ['done', 'sale'])],
+                fields=['id', 'name', 'amount_total', 'date_order', 'partner_id', 'state'],
+                limit=100, order='date_order desc'
+            )
+            data = [{
+                'id': s['id'],
+                'order_number': s['name'],
+                'amount': s['amount_total'],
+                'date': s['date_order'],
+                'customer': s['partner_id'][1] if s['partner_id'] else 'Sin cliente',
+                'state': s['state'],
+            } for s in sales]
+            return _json_response({'success': True, 'data': data})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/dashboard/sales-trend', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_sales_trend(self):
+        try:
+            today = datetime.now().date()
+            thirty_days_ago = today - timedelta(days=30)
+            sales = request.env['sale.order'].search([
+                ('date_order', '>=', f"{thirty_days_ago} 00:00:00"),
+                ('state', 'in', ['done', 'sale'])
+            ])
+            trend = {}
+            for sale in sales:
+                date_key = sale.date_order.date().isoformat()
+                if date_key not in trend:
+                    trend[date_key] = {'amount': 0, 'count': 0}
+                trend[date_key]['amount'] += sale.amount_total
+                trend[date_key]['count'] += 1
+            return _json_response({'success': True, 'data': trend})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
+    @http.route('/api/dashboard/revenue', type='http', auth='user', methods=['GET'], csrf=False)
+    def get_revenue(self):
+        try:
+            period = request.httprequest.args.get('period', 'month')
+            today = datetime.now().date()
+            if period == 'day':
+                date_from = today
+            elif period == 'year':
+                date_from = today.replace(month=1, day=1)
+            else:
+                date_from = today.replace(day=1)
+
+            sales = request.env['sale.order'].search([
+                ('date_order', '>=', f"{date_from} 00:00:00"),
+                ('state', 'in', ['done', 'sale'])
+            ])
+            total = sum(s.amount_total for s in sales)
+            return _json_response({'success': True, 'data': {
+                'period': period,
+                'total_revenue': total,
+                'order_count': len(sales),
+                'average_order': round(total / len(sales), 2) if sales else 0,
+            }})
+        except Exception as e:
+            return _json_response({'success': False, 'error': str(e)}, 500)
+
         """
         Crear una reserva sin pasar por el portal de Odoo.
         
